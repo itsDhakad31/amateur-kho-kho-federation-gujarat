@@ -1,0 +1,367 @@
+import "dotenv/config";
+import express, { RequestHandler } from "express";
+import { createServer as createViteServer } from "vite";
+import path from "path";
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+import http from "http";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import { supabase } from "./src/supabase";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+const app = express();
+const DEFAULT_PORT = 3000;
+
+const JWT_SECRET = process.env.JWT_SECRET || 'akkfg-secret-key-2026';
+const DEFAULT_ADMIN_EMAIL = (process.env.DEFAULT_ADMIN_EMAIL || 'admin@akkfg.com').trim().toLowerCase();
+const DEFAULT_ADMIN_PASSWORD = process.env.DEFAULT_ADMIN_PASSWORD || 'admin123';
+
+// Middleware - HOISTED FIRST
+app.use(express.json());
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(200);
+  } else {
+    next();
+  }
+});
+
+// Auth middleware - HOISTED
+const authMiddleware: RequestHandler = async (req, res, next) => {
+  const authHeader = req.header('Authorization');
+  if (!authHeader?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  try {
+    const token = authHeader.slice(7);
+    const payload = jwt.verify(token, JWT_SECRET) as any;
+    (req as any).jwtPayload = payload;
+    next();
+  } catch {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+};
+
+const isAdminMiddleware: RequestHandler = async (req, res, next) => {
+  const payload = (req as any).jwtPayload;
+  if (payload.role !== 'Admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  next();
+};
+
+const normalizeEmail = (email: string) => email.trim().toLowerCase();
+
+const isPasswordMatch = async (password: string, storedPassword: string) => {
+  if (!storedPassword) return false;
+
+  // Support proper bcrypt hashes and older plain-text test rows.
+  if (storedPassword.startsWith('$2')) {
+    return bcrypt.compare(password, storedPassword);
+  }
+
+  return password === storedPassword;
+};
+
+const findFreePort = (port: number): Promise<number> => {
+  return new Promise((resolve) => {
+    const testServer = http.createServer();
+    testServer.listen(port, () => {
+      const assignedPort = (testServer.address() as any)?.port;
+      testServer.close(() => resolve(assignedPort));
+    });
+    testServer.on('error', () => resolve(port + 1)); // Try next port on error
+  });
+};
+
+// Helper
+const generateUniqueID = async (role: string) => {
+  const prefix = role === 'Coach' ? 'AKKFG-C' : 'AKKFG-S';
+  const { data: countRes } = await supabase
+    .from('registrations')
+    .select('count', { count: 'exact', head: true })
+    .eq('unique_id::text', prefix + '-%');
+  const count = (countRes?.[0]?.count || 0) + 1;
+  return `${prefix}-${count.toString().padStart(4, '0')}`;
+};
+
+// API Routes - ALL /api/*
+app.get('/api/ping', (req, res) => res.json({ message: 'pong' }));
+
+app.get('/api/news', async (req, res) => {
+  const { data, error } = await supabase.from('news').select('*').order('date', { ascending: false });
+  if (error) return res.status(500).json({ error });
+  res.json(data || []);
+});
+
+app.get('/api/events', async (req, res) => {
+  const { data, error } = await supabase.from('events').select('*').order('date', { ascending: true });
+  if (error) return res.status(500).json({ error });
+  res.json(data || []);
+});
+
+app.post('/api/auth/register', async (req, res) => {
+  const { name, password, role } = req.body;
+  const email = normalizeEmail(req.body.email || '');
+  try {
+    const { data: existing } = await supabase.from('users').select('*').eq('email', email).single();
+    if (existing) return res.status(400).json({ error: 'Email already exists' });
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const { data, error } = await supabase
+      .from('users')
+      .insert({ name, email, password: hashedPassword, role: role || 'Player' })
+      .select()
+      .single();
+    if (error) throw error;
+    const user = { id: data.id, name: data.name, email: data.email, role: data.role };
+    const token = jwt.sign(user, JWT_SECRET);
+    res.json({ user, token });
+  } catch (error: any) {
+    console.error('Register:', error);
+    res.status(500).json({ error: 'Registration failed' });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  const email = normalizeEmail(req.body.email || '');
+  const { password } = req.body;
+  try {
+    if (email === DEFAULT_ADMIN_EMAIL && password === DEFAULT_ADMIN_PASSWORD) {
+      const { data: adminUser } = await supabase
+        .from('users')
+        .select('*')
+        .ilike('email', email)
+        .maybeSingle();
+
+      const payload = adminUser
+        ? { id: adminUser.id, name: adminUser.name, email: adminUser.email, role: 'Admin' }
+        : { id: 'default-admin', name: 'Admin', email: DEFAULT_ADMIN_EMAIL, role: 'Admin' };
+
+      const token = jwt.sign(payload, JWT_SECRET);
+      return res.json({ user: payload, token });
+    }
+
+    const { data: user } = await supabase.from('users').select('*').ilike('email', email).maybeSingle();
+
+    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+
+    const valid = await isPasswordMatch(password, user.password);
+    if (!valid) {
+      if (user.role === 'Admin' && email === DEFAULT_ADMIN_EMAIL && password === DEFAULT_ADMIN_PASSWORD) {
+        const payload = { id: user.id, name: user.name, email: user.email, role: user.role };
+        const token = jwt.sign(payload, JWT_SECRET);
+        return res.json({ user: payload, token });
+      }
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const payload = { id: user.id, name: user.name, email: user.email, role: user.role };
+    const token = jwt.sign(payload, JWT_SECRET);
+    res.json({ user: payload, token });
+  } catch (error: any) {
+    console.error('Login:', error);
+    res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+app.get('/api/auth/me', authMiddleware, (req, res) => {
+  res.json((req as any).jwtPayload);
+});
+
+import multer from 'multer';
+const storage = multer.memoryStorage();
+const upload = multer({ 
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: (req, file, cb) => {
+    cb(null, true)
+  }
+});
+
+app.post('/api/register', upload.fields([
+  { name: 'doc_photo', maxCount: 1 },
+  { name: 'doc_aadhar', maxCount: 1 },
+  { name: 'doc_pan', maxCount: 1 },
+  { name: 'doc_birth', maxCount: 1 },
+  { name: 'coaching_cert', maxCount: 1 },
+  { name: 'edu_qualification', maxCount: 1 },
+  { name: 'referee_cert', maxCount: 1 }
+]), async (req, res) => {
+  const data = req.body;
+  const urls: Record<string, string> = {};
+  const multerFiles = req.files as { [fieldname: string]: Express.Multer.File[] } || {};
+  const files = Object.values(multerFiles).flat();
+  
+  for (let file of files) {
+    try {
+      const fileName = `registrations/${Date.now()}-${file.originalname}`;
+      const { error } = await supabase.storage
+        .from('documents')
+        .upload(fileName, file.buffer, {
+          contentType: file.mimetype,
+          upsert: true
+        });
+      if (error) {
+        console.error(`Upload error for ${file.fieldname}:`, error);
+        continue;
+      }
+      const { data: publicUrlData } = supabase.storage
+        .from('documents')
+        .getPublicUrl(fileName);
+      urls[file.fieldname] = publicUrlData.publicUrl;
+    } catch (err) {
+      console.error(`Error processing ${file.originalname}:`, err);
+    }
+  }
+  
+  Object.assign(data, urls);
+  const { data: result, error: insertError } = await supabase.from('registrations').insert(data).select().single();
+  if (insertError) return res.status(500).json({ error: insertError.message });
+  res.json({ success: true, id: result.id, urls });
+});
+
+app.get('/api/registrations/me', authMiddleware, async (req, res) => {
+  const payload = (req as any).jwtPayload;
+  const { data, error } = await supabase.from('registrations').select('*').eq('email', payload.email).limit(1).maybeSingle();
+  if (error) return res.status(500).json({ error });
+  res.json(data);
+});
+
+app.get('/api/admin/registrations', authMiddleware, isAdminMiddleware, async (req, res) => {
+  const { data, error } = await supabase.from('registrations').select('*').order('created_at', { ascending: false });
+  if (error) return res.status(500).json({ error });
+  res.json(data || []);
+});
+
+app.put('/api/admin/registrations/:id/status', authMiddleware, isAdminMiddleware, async (req, res) => {
+  const id = req.params.id;
+  const { status } = req.body;
+  const { data: reg } = await supabase.from('registrations').select('*').eq('id', id).single();
+  if (!reg) return res.status(404).json({ error: 'Registration not found' });
+  let unique_id = reg.unique_id;
+  if (status === 'Approved' && !unique_id) unique_id = await generateUniqueID(reg.role);
+  const { error } = await supabase.from('registrations').update({ status, unique_id }).eq('id', id);
+  if (error) return res.status(500).json({ error });
+  res.json({ success: true });
+});
+
+app.delete('/api/admin/registrations/:id', authMiddleware, isAdminMiddleware, async (req, res) => {
+  const id = req.params.id;
+  const { error } = await supabase.from('registrations').delete().eq('id', id);
+  if (error) return res.status(500).json({ error });
+  res.json({ success: true });
+});
+
+app.post('/api/admin/events', authMiddleware, isAdminMiddleware, async (req, res) => {
+  const { title, date, location, category, status } = req.body;
+  const { data, error } = await supabase.from('events').insert({ title, date, location, category, status: status || 'Upcoming' }).select().single();
+  if (error) return res.status(500).json({ error });
+  res.json({ success: true, id: data.id });
+});
+
+app.delete('/api/admin/events/:id', authMiddleware, isAdminMiddleware, async (req, res) => {
+  const id = req.params.id;
+  const { error } = await supabase.from('events').delete().eq('id', id);
+  if (error) return res.status(500).json({ error });
+  res.json({ success: true });
+});
+
+app.get('/api/admin/news', authMiddleware, isAdminMiddleware, async (req, res) => {
+  const { data, error } = await supabase.from('news').select('*').order('created_at', { ascending: false });
+  if (error) return res.status(500).json({ error });
+  res.json(data || []);
+});
+
+app.put('/api/admin/news/:id', authMiddleware, isAdminMiddleware, async (req, res) => {
+  const id = req.params.id;
+  const updates = req.body;
+  const { data, error } = await supabase.from('news').update(updates).eq('id', id).select().single();
+  if (error) return res.status(500).json({ error });
+  res.json({ success: true, news: data });
+});
+
+app.post('/api/admin/news', authMiddleware, isAdminMiddleware, async (req, res) => {
+  const { title, summary, date, image } = req.body;
+  const { data, error } = await supabase.from('news').insert({ title, summary, date, image }).select().single();
+  if (error) return res.status(500).json({ error });
+  res.json({ success: true, id: data.id });
+});
+
+app.delete('/api/admin/news/:id', authMiddleware, isAdminMiddleware, async (req, res) => {
+  const id = req.params.id;
+  const { error } = await supabase.from('news').delete().eq('id', id);
+  if (error) return res.status(500).json({ error });
+  res.json({ success: true });
+});
+
+app.get('/api/admin/stats', authMiddleware, isAdminMiddleware, async (req, res) => {
+  const [usersRes, regsRes, pendingRes] = await Promise.all([
+    supabase.from('users').select('count', { count: 'exact', head: true }),
+    supabase.from('registrations').select('count', { count: 'exact', head: true }),
+    supabase.from('registrations').select('count', { count: 'exact', head: true }).eq('status', 'Pending')
+  ]);
+  const users = usersRes.data?.[0]?.count || 0;
+  const registrations = regsRes.data?.[0]?.count || 0;
+  const pending = pendingRes.data?.[0]?.count || 0;
+  res.json({ users, registrations, pending });
+});
+
+// Vite dev server - AFTER API ROUTES
+if (process.env.NODE_ENV !== 'production') {
+  (async () => {
+    const requestedWsPort = Number(process.env.WS_PORT) || 24679;
+    const wsPort = await findFreePort(requestedWsPort);
+    const vite = await createViteServer({
+      server: { middlewareMode: true, hmr: { port: wsPort } },
+      appType: 'custom',
+    });
+    if (wsPort !== requestedWsPort) {
+      console.log(`Vite HMR WebSocket port ${requestedWsPort} was busy, switched to ${wsPort}`);
+    } else {
+      console.log(`Vite HMR WebSocket port set to ${wsPort}`);
+    }
+    app.use(vite.middlewares);
+    app.use('*', vite.middlewares);
+    console.log('Vite dev middleware loaded');
+  })();
+} else {
+  app.use(express.static(path.resolve(__dirname, 'dist')));
+  app.get('*', (req, res) => {
+    res.sendFile(path.resolve(__dirname, 'dist/index.html'));
+  });
+}
+
+// Graceful port finding and server start
+const server = http.createServer(app);
+
+(async () => {
+  let port = Number(process.env.PORT) || DEFAULT_PORT;
+  port = await findFreePort(port);
+  
+  server.listen(port, () => {
+    console.log(`Server running on http://localhost:${port}`);
+    console.log('API ready: http://localhost:${port}/api/ping');
+  }).on('error', (err) => {
+    if ((err as any).code === 'EADDRINUSE') {
+      console.log('Port in use, trying next...');
+    }
+  });
+  
+  // Graceful shutdown
+  const gracefulShutdown = (signal: string) => {
+    console.log(`${signal} received: closing server`);
+    server.close(() => {
+      console.log('Server closed gracefully');
+      process.exit(0);
+    });
+  };
+  
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+})();
