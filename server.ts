@@ -7,7 +7,7 @@ import { dirname } from 'path';
 import http from "http";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { supabase } from "./src/supabase";
+import { supabase, supabaseAdmin } from "./src/supabase";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -57,6 +57,105 @@ const isAdminMiddleware: RequestHandler = async (req, res, next) => {
 };
 
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
+
+const STORAGE_BUCKET = 'documents';
+const DOCUMENT_FIELDS = [
+  'doc_photo',
+  'doc_aadhar',
+  'doc_pan',
+  'doc_birth',
+  'coaching_cert',
+  'edu_qualification',
+  'referee_cert'
+] as const;
+const MEDIA_TABLES = {
+  photos: 'gallery_photos',
+  videos: 'gallery_videos'
+} as const;
+
+const extractStoragePath = (value: string | null | undefined) => {
+  if (!value) return null;
+
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+    return trimmed.replace(/^\/+/, '');
+  }
+
+  try {
+    const url = new URL(trimmed);
+    const marker = `/storage/v1/object/public/${STORAGE_BUCKET}/`;
+    const signedMarker = `/storage/v1/object/sign/${STORAGE_BUCKET}/`;
+
+    if (url.pathname.includes(marker)) {
+      return decodeURIComponent(url.pathname.split(marker)[1] || '').replace(/^\/+/, '');
+    }
+
+    if (url.pathname.includes(signedMarker)) {
+      return decodeURIComponent(url.pathname.split(signedMarker)[1] || '').replace(/^\/+/, '');
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+};
+
+const signStorageValue = async (value: string | null | undefined) => {
+  const objectPath = extractStoragePath(value);
+  if (!objectPath) return value || null;
+
+  const { data, error } = await supabaseAdmin.storage
+    .from(STORAGE_BUCKET)
+    .createSignedUrl(objectPath, 60 * 60);
+
+  if (error) {
+    console.error(`Signed URL error for ${objectPath}:`, error);
+    return value || null;
+  }
+
+  return data.signedUrl;
+};
+
+const attachSignedDocumentUrls = async <T extends Record<string, any>>(registration: T) => {
+  const signedEntries = await Promise.all(
+    DOCUMENT_FIELDS.map(async (field) => [field, await signStorageValue(registration[field])] as const)
+  );
+
+  return {
+    ...registration,
+    ...Object.fromEntries(signedEntries)
+  };
+};
+
+const isMissingRelationError = (error: any) => error?.code === '42P01';
+
+const createStorageObjectPath = (folder: string, fileName: string) => {
+  const sanitized = fileName.replace(/[^a-zA-Z0-9._-]/g, '-');
+  return `${folder}/${Date.now()}-${sanitized}`;
+};
+
+const attachSignedMediaUrls = async <T extends Record<string, any>>(
+  items: T[],
+  sourceField: keyof T,
+  outputField: string
+) => {
+  return Promise.all(
+    items.map(async (item) => ({
+      ...item,
+      [outputField]: await signStorageValue(item[sourceField] as string | null | undefined)
+    }))
+  );
+};
+
+const buildDownloadFilename = (label: string | undefined, objectPath: string) => {
+  const rawName = (label && label.trim()) || path.basename(objectPath) || 'document';
+  const extension = path.extname(objectPath);
+  const hasExtension = path.extname(rawName);
+  const withExtension = hasExtension ? rawName : `${rawName}${extension}`;
+  return withExtension.replace(/["\r\n]/g, '_');
+};
 
 const isPasswordMatch = async (password: string, storedPassword: string) => {
   if (!storedPassword) return false;
@@ -129,6 +228,7 @@ app.post('/api/auth/register', async (req, res) => {
 });
 
 app.post('/api/auth/login', async (req, res) => {
+  console.log('LOGIN ATTEMPT:', req.body.email);
   const email = normalizeEmail(req.body.email || '');
   const { password } = req.body;
   try {
@@ -147,7 +247,11 @@ app.post('/api/auth/login', async (req, res) => {
       return res.json({ user: payload, token });
     }
 
-    const { data: user } = await supabase.from('users').select('*').ilike('email', email).maybeSingle();
+    const { data: user, error: queryError } = await supabase.from('users').select('*').ilike('email', email).maybeSingle();
+    if (queryError) {
+      console.error('DB QUERY ERROR for email', email, ':', queryError);
+      return res.status(500).json({ error: 'Database query failed', details: queryError.message });
+    }
 
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
@@ -165,7 +269,7 @@ app.post('/api/auth/login', async (req, res) => {
     const token = jwt.sign(payload, JWT_SECRET);
     res.json({ user: payload, token });
   } catch (error: any) {
-    console.error('Login:', error);
+    console.error('LOGIN ERROR for', req.body.email, ':', error);
     res.status(500).json({ error: 'Login failed' });
   }
 });
@@ -182,6 +286,10 @@ const upload = multer({
   fileFilter: (req, file, cb) => {
     cb(null, true)
   }
+});
+const mediaUpload = multer({
+  storage,
+  limits: { fileSize: 100 * 1024 * 1024 } // 100MB
 });
 
 app.post('/api/register', upload.fields([
@@ -201,7 +309,7 @@ app.post('/api/register', upload.fields([
   for (let file of files) {
     try {
       const fileName = `registrations/${Date.now()}-${file.originalname}`;
-      const { error } = await supabase.storage
+      const { error } = await supabaseAdmin.storage
         .from('documents')
         .upload(fileName, file.buffer, {
           contentType: file.mimetype,
@@ -211,7 +319,7 @@ app.post('/api/register', upload.fields([
         console.error(`Upload error for ${file.fieldname}:`, error);
         continue;
       }
-      const { data: publicUrlData } = supabase.storage
+      const { data: publicUrlData } = supabaseAdmin.storage
         .from('documents')
         .getPublicUrl(fileName);
       urls[file.fieldname] = publicUrlData.publicUrl;
@@ -221,7 +329,7 @@ app.post('/api/register', upload.fields([
   }
   
   Object.assign(data, urls);
-  const { data: result, error: insertError } = await supabase.from('registrations').insert(data).select().single();
+  const { data: result, error: insertError } = await supabaseAdmin.from('registrations').insert(data).select().single();
   if (insertError) return res.status(500).json({ error: insertError.message });
   res.json({ success: true, id: result.id, urls });
 });
@@ -236,7 +344,203 @@ app.get('/api/registrations/me', authMiddleware, async (req, res) => {
 app.get('/api/admin/registrations', authMiddleware, isAdminMiddleware, async (req, res) => {
   const { data, error } = await supabase.from('registrations').select('*').order('created_at', { ascending: false });
   if (error) return res.status(500).json({ error });
-  res.json(data || []);
+  const registrations = await Promise.all((data || []).map(attachSignedDocumentUrls));
+  res.json(registrations);
+});
+
+app.get('/api/admin/photos', authMiddleware, isAdminMiddleware, async (req, res) => {
+  const { data, error } = await supabaseAdmin
+    .from(MEDIA_TABLES.photos)
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    if (isMissingRelationError(error)) return res.json([]);
+    return res.status(500).json({ error: error.message });
+  }
+
+  const photos = await attachSignedMediaUrls(data || [], 'image_path', 'image');
+  res.json(photos);
+});
+
+app.post('/api/admin/photos', authMiddleware, isAdminMiddleware, mediaUpload.single('file'), async (req, res) => {
+  const file = req.file;
+  const { title, category } = req.body;
+
+  if (!file) return res.status(400).json({ error: 'Photo file is required' });
+  if (!title?.trim()) return res.status(400).json({ error: 'Photo title is required' });
+
+  const objectPath = createStorageObjectPath('admin/photos', file.originalname);
+  const { error: uploadError } = await supabaseAdmin.storage
+    .from(STORAGE_BUCKET)
+    .upload(objectPath, file.buffer, {
+      contentType: file.mimetype,
+      upsert: true
+    });
+
+  if (uploadError) return res.status(500).json({ error: uploadError.message });
+
+  const { data, error } = await supabaseAdmin
+    .from(MEDIA_TABLES.photos)
+    .insert({
+      title: title.trim(),
+      category: (category || 'Tournament').trim(),
+      image_path: objectPath
+    })
+    .select('*')
+    .single();
+
+  if (error) {
+    await supabaseAdmin.storage.from(STORAGE_BUCKET).remove([objectPath]);
+    if (isMissingRelationError(error)) {
+      return res.status(500).json({ error: 'Photo table is missing. Run supabase-media-schema.sql first.' });
+    }
+    return res.status(500).json({ error: error.message });
+  }
+
+  res.json({
+    success: true,
+    photo: {
+      ...data,
+      image: await signStorageValue(data.image_path)
+    }
+  });
+});
+
+app.delete('/api/admin/photos/:id', authMiddleware, isAdminMiddleware, async (req, res) => {
+  const { id } = req.params;
+  const { data, error } = await supabaseAdmin
+    .from(MEDIA_TABLES.photos)
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error || !data) {
+    if (isMissingRelationError(error)) return res.status(500).json({ error: 'Photo table is missing. Run supabase-media-schema.sql first.' });
+    return res.status(404).json({ error: 'Photo not found' });
+  }
+
+  if (data.image_path) {
+    await supabaseAdmin.storage.from(STORAGE_BUCKET).remove([data.image_path]);
+  }
+
+  const { error: deleteError } = await supabaseAdmin
+    .from(MEDIA_TABLES.photos)
+    .delete()
+    .eq('id', id);
+
+  if (deleteError) return res.status(500).json({ error: deleteError.message });
+  res.json({ success: true });
+});
+
+app.get('/api/admin/videos', authMiddleware, isAdminMiddleware, async (req, res) => {
+  const { data, error } = await supabaseAdmin
+    .from(MEDIA_TABLES.videos)
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    if (isMissingRelationError(error)) return res.json([]);
+    return res.status(500).json({ error: error.message });
+  }
+
+  const videos = await attachSignedMediaUrls(data || [], 'video_path', 'url');
+  res.json(videos);
+});
+
+app.post('/api/admin/videos', authMiddleware, isAdminMiddleware, mediaUpload.single('file'), async (req, res) => {
+  const file = req.file;
+  const { title } = req.body;
+
+  if (!file) return res.status(400).json({ error: 'Video file is required' });
+  if (!title?.trim()) return res.status(400).json({ error: 'Video title is required' });
+
+  const objectPath = createStorageObjectPath('admin/videos', file.originalname);
+  const { error: uploadError } = await supabaseAdmin.storage
+    .from(STORAGE_BUCKET)
+    .upload(objectPath, file.buffer, {
+      contentType: file.mimetype,
+      upsert: true
+    });
+
+  if (uploadError) return res.status(500).json({ error: uploadError.message });
+
+  const { data, error } = await supabaseAdmin
+    .from(MEDIA_TABLES.videos)
+    .insert({
+      title: title.trim(),
+      video_path: objectPath
+    })
+    .select('*')
+    .single();
+
+  if (error) {
+    await supabaseAdmin.storage.from(STORAGE_BUCKET).remove([objectPath]);
+    if (isMissingRelationError(error)) {
+      return res.status(500).json({ error: 'Video table is missing. Run supabase-media-schema.sql first.' });
+    }
+    return res.status(500).json({ error: error.message });
+  }
+
+  res.json({
+    success: true,
+    video: {
+      ...data,
+      url: await signStorageValue(data.video_path)
+    }
+  });
+});
+
+app.delete('/api/admin/videos/:id', authMiddleware, isAdminMiddleware, async (req, res) => {
+  const { id } = req.params;
+  const { data, error } = await supabaseAdmin
+    .from(MEDIA_TABLES.videos)
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error || !data) {
+    if (isMissingRelationError(error)) return res.status(500).json({ error: 'Video table is missing. Run supabase-media-schema.sql first.' });
+    return res.status(404).json({ error: 'Video not found' });
+  }
+
+  if (data.video_path) {
+    await supabaseAdmin.storage.from(STORAGE_BUCKET).remove([data.video_path]);
+  }
+
+  const { error: deleteError } = await supabaseAdmin
+    .from(MEDIA_TABLES.videos)
+    .delete()
+    .eq('id', id);
+
+  if (deleteError) return res.status(500).json({ error: deleteError.message });
+  res.json({ success: true });
+});
+
+app.get('/api/admin/documents/download', authMiddleware, isAdminMiddleware, async (req, res) => {
+  const source = typeof req.query.source === 'string' ? req.query.source : '';
+  const label = typeof req.query.label === 'string' ? req.query.label : '';
+  const objectPath = extractStoragePath(source);
+
+  if (!objectPath) {
+    return res.status(400).json({ error: 'Invalid document source' });
+  }
+
+  const { data, error } = await supabaseAdmin.storage
+    .from(STORAGE_BUCKET)
+    .download(objectPath);
+
+  if (error || !data) {
+    return res.status(404).json({ error: error?.message || 'Document not found' });
+  }
+
+  const buffer = Buffer.from(await data.arrayBuffer());
+  const fileName = buildDownloadFilename(label, objectPath);
+
+  res.setHeader('Content-Type', data.type || 'application/octet-stream');
+  res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+  res.setHeader('Content-Length', buffer.length.toString());
+  res.send(buffer);
 });
 
 app.put('/api/admin/registrations/:id/status', authMiddleware, isAdminMiddleware, async (req, res) => {

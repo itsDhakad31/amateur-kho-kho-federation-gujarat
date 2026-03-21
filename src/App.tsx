@@ -21,7 +21,9 @@ import {
   User as UserIcon,
   Plus,
   Trash2,
-  FileText
+  FileText,
+  Play,
+  Image as ImageIcon
 } from 'lucide-react';
 import { NewsItem, EventItem, RegistrationData, User, RegistrationFormData } from './types';
 
@@ -161,6 +163,7 @@ const Navbar = ({ activeTab, setActiveTab, user, onLogout, onOpenLogin }: {
     { id: 'about', label: 'About Us' },
     { id: 'events', label: 'Events' },
     { id: 'register', label: 'Registrations' },
+    { id: 'media', label: 'Media & News' },
     { id: 'downloads', label: 'Downloads' },
     { id: 'contact', label: 'Contact' },
   ];
@@ -406,12 +409,14 @@ const Home = ({ setActiveTab }: { setActiveTab: (tab: string) => void }) => {
       {/* Hero Section */}
       <section className="relative h-[85vh] flex items-center overflow-hidden bg-akkfg-blue">
         <div className="absolute inset-0 z-0">
-          <img 
-            src="https://picsum.photos/seed/khokho-hero/1920/1080?blur=2" 
-            className="w-full h-full object-cover opacity-30"
+
+<img 
+            src="https://i.ibb.co/TDRxm07w/Kho-Kho-Ground-Measurement-1024x614-1.webp" 
+            className="w-full h-full object-cover opacity-20"
             referrerPolicy="no-referrer"
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-akkfg-blue via-akkfg-blue/80 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-r from-akkfg-blue via-akkfg-blue/90 to-transparent" />
+
         </div>
         
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
@@ -425,7 +430,8 @@ const Home = ({ setActiveTab }: { setActiveTab: (tab: string) => void }) => {
               Official State Federation
             </span>
             <h1 className="text-5xl md:text-7xl text-white mb-6 leading-tight">
-              Reviving the Spirit of <span className="text-akkfg-orange">Kho-Kho</span> in Gujarat
+Reviving the Spirit of <span className="text-akkfg-orange">Kho-Kho</span> in Gujarat
+
             </h1>
             <p className="text-lg text-slate-300 mb-10 leading-relaxed">
               Empowering athletes, fostering sportsmanship, and building a world-class ecosystem for the traditional sport of Kho-Kho across every district of Gujarat.
@@ -1022,6 +1028,148 @@ const Events = () => {
   );
 };
 
+const MediaNews = () => {
+  const [news, setNews] = useState<NewsItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/news')
+      .then(res => res.json())
+      .then(data => {
+        setNews(Array.isArray(data) ? data : []);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error('Error fetching news:', err);
+        setLoading(false);
+      });
+  }, []);
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
+      <div className="mb-12">
+        <h2 className="text-4xl text-akkfg-blue mb-4">Media & News</h2>
+        <p className="text-slate-500">Stay updated with the latest news, highlights, and media coverage from AKKFG.</p>
+      </div>
+
+      {loading ? (
+        <div className="text-center py-12">
+          <div className="inline-block animate-spin">
+            <div className="w-8 h-8 border-4 border-akkfg-orange/20 border-t-akkfg-orange rounded-full"></div>
+          </div>
+          <p className="text-slate-500 mt-4">Loading news...</p>
+        </div>
+      ) : news.length === 0 ? (
+        <div className="text-center py-12">
+          <Newspaper size={48} className="text-slate-300 mx-auto mb-4" />
+          <p className="text-slate-500">No news articles at the moment. Check back soon!</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          {news.map((article) => (
+            <motion.div
+              key={article.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              whileHover={{ y: -8 }}
+              className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-lg transition-all cursor-pointer group"
+            >
+              {article.image && (
+                <div className="relative h-48 overflow-hidden bg-slate-200">
+                  <img 
+                    src={article.image} 
+                    alt={article.title}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  />
+                </div>
+              )}
+              <div className="p-6">
+                <div className="flex items-center gap-2 mb-3">
+                  <Newspaper size={16} className="text-akkfg-orange" />
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    {new Date(article.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </span>
+                </div>
+                <h3 className="text-lg font-bold text-akkfg-blue mb-3 group-hover:text-akkfg-orange transition-colors line-clamp-2">
+                  {article.title}
+                </h3>
+                <p className="text-sm text-slate-500 mb-4 line-clamp-3">
+                  {article.summary}
+                </p>
+                <button className="flex items-center gap-2 text-akkfg-orange font-bold text-sm hover:gap-3 transition-all">
+                  Read More <ChevronRight size={16} />
+                </button>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      )}
+
+      {/* Gallery Section */}
+      <div className="mt-20 pt-16 border-t border-slate-200">
+        <h3 className="text-3xl text-akkfg-blue mb-10">Photo Gallery</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[
+            { id: 1, title: 'Tournament 2026', img: 'https://via.placeholder.com/300x200?text=Tournament' },
+            { id: 2, title: 'Training Camp', img: 'https://via.placeholder.com/300x200?text=Training' },
+            { id: 3, title: 'Championship', img: 'https://via.placeholder.com/300x200?text=Championship' },
+            { id: 4, title: 'District Meet', img: 'https://via.placeholder.com/300x200?text=District' },
+          ].map((item) => (
+            <motion.div
+              key={item.id}
+              whileHover={{ scale: 1.05 }}
+              className="relative h-48 rounded-2xl overflow-hidden cursor-pointer group"
+            >
+              <img 
+                src={item.img}
+                alt={item.title}
+                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
+                <p className="text-white font-bold">{item.title}</p>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+
+      {/* Video Section */}
+      <div className="mt-16">
+        <h3 className="text-3xl text-akkfg-blue mb-10">Featured Videos</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {[
+            { id: 1, title: 'How to Play Kho-Kho', thumbnail: 'https://via.placeholder.com/500x280?text=Video+1' },
+            { id: 2, title: 'State Championship Highlights', thumbnail: 'https://via.placeholder.com/500x280?text=Video+2' },
+          ].map((video) => (
+            <motion.div
+              key={video.id}
+              whileHover={{ scale: 1.02 }}
+              className="relative h-64 rounded-2xl overflow-hidden cursor-pointer group bg-slate-200"
+            >
+              <img 
+                src={video.thumbnail}
+                alt={video.title}
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              />
+              <div className="absolute inset-0 bg-black/40 group-hover:bg-black/50 transition-colors flex items-center justify-center">
+                <motion.div
+                  whileHover={{ scale: 1.1 }}
+                  className="w-16 h-16 bg-akkfg-orange rounded-full flex items-center justify-center text-white shadow-lg"
+                >
+                  <Play size={28} className="ml-1" />
+                </motion.div>
+              </div>
+              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 p-4">
+                <p className="text-white font-bold text-lg">{video.title}</p>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const Downloads = () => (
   <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
     <h2 className="text-4xl text-akkfg-blue mb-12">Download Center</h2>
@@ -1219,12 +1367,98 @@ const Dashboard = ({ user, onCompleteRegistration }: { user: User, onCompleteReg
     </div>
   );
 };
+
+const AdminDocumentActions = ({ url, label }: { url?: string | null, label: string }) => {
+  if (!url) {
+    return <span className="text-[10px] text-slate-400 italic">Not Uploaded</span>;
+  }
+
+  const handleDownload = async () => {
+    const token = localStorage.getItem('akkfg_token');
+    if (!token) {
+      alert('Admin session expired. Please log in again.');
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `/api/admin/documents/download?source=${encodeURIComponent(url)}&label=${encodeURIComponent(label)}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Download failed');
+      }
+
+      const blob = await response.blob();
+      const objectUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const contentDisposition = response.headers.get('content-disposition');
+      const suggestedName = contentDisposition?.match(/filename="(.+)"/)?.[1] || label;
+
+      link.href = objectUrl;
+      link.download = suggestedName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      console.error('Document download error:', error);
+      alert('Unable to download document. Please try again.');
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-center gap-2">
+      <a
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        className="text-[10px] bg-akkfg-blue text-white px-3 py-1 rounded-full hover:bg-akkfg-blue/90 transition-all"
+      >
+        View Document
+      </a>
+      <button
+        type="button"
+        onClick={handleDownload}
+        aria-label={`Download ${label}`}
+        title={`Download ${label}`}
+        className="w-8 h-8 rounded-full bg-white border border-slate-200 text-akkfg-orange flex items-center justify-center hover:bg-akkfg-orange hover:text-white transition-all"
+      >
+        <Download size={14} />
+      </button>
+    </div>
+  );
+};
+
+type AdminPhotoForm = {
+  title: string;
+  file: File | null;
+  category: string;
+};
+
+type AdminVideoForm = {
+  title: string;
+  file: File | null;
+};
+
 const AdminPanel = () => {
   const [registrations, setRegistrations] = useState<RegistrationData[]>([]);
   const [events, setEvents] = useState<any[]>([]);
+  const [news, setNews] = useState<any[]>([]);
+  const [photos, setPhotos] = useState<any[]>([]);
+  const [videos, setVideos] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [adminTab, setAdminTab] = useState('registrations');
   const [showTournamentForm, setShowTournamentForm] = useState(false);
+  const [showNewsForm, setShowNewsForm] = useState(false);
+  const [showPhotoForm, setShowPhotoForm] = useState(false);
+  const [showVideoForm, setShowVideoForm] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<any>(null);
   const [newTournament, setNewTournament] = useState({
     title: '',
@@ -1233,16 +1467,34 @@ const AdminPanel = () => {
     category: 'Senior',
     status: 'Upcoming'
   });
+  const [newNews, setNewNews] = useState({
+    title: '',
+    summary: '',
+    date: new Date().toISOString().split('T')[0],
+    image: ''
+  });
+  const [newPhoto, setNewPhoto] = useState({
+    title: '',
+    file: null as File | null,
+    category: 'Tournament'
+  } satisfies AdminPhotoForm);
+  const [newVideo, setNewVideo] = useState({
+    title: '',
+    file: null as File | null
+  } satisfies AdminVideoForm);
 
   const fetchData = async () => {
     console.log("AdminPanel: Fetching fresh data...");
     try {
       const token = localStorage.getItem('akkfg_token');
       const timestamp = Date.now();
-      const [regsRes, statsRes, eventsRes] = await Promise.all([
+      const [regsRes, statsRes, eventsRes, newsRes, photosRes, videosRes] = await Promise.all([
         fetch(`/api/admin/registrations?t=${timestamp}`, { headers: { 'Authorization': `Bearer ${token}` } }),
         fetch(`/api/admin/stats?t=${timestamp}`, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`/api/events?t=${timestamp}`)
+        fetch(`/api/events?t=${timestamp}`),
+        fetch(`/api/news?t=${timestamp}`),
+        fetch(`/api/admin/photos?t=${timestamp}`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`/api/admin/videos?t=${timestamp}`, { headers: { 'Authorization': `Bearer ${token}` } })
       ]);
       
       if (!regsRes.ok || !statsRes.ok || !eventsRes.ok) {
@@ -1252,12 +1504,18 @@ const AdminPanel = () => {
       const regsData = await regsRes.json();
       const statsData = await statsRes.json();
       const eventsData = await eventsRes.json();
+      const newsData = await newsRes.json();
+      const photosData = photosRes.ok ? await photosRes.json() : [];
+      const videosData = videosRes.ok ? await videosRes.json() : [];
       
       console.log("AdminPanel: Data fetched successfully", { regs: regsData.length, events: eventsData.length });
       
       setRegistrations(regsData);
       setStats(statsData);
       setEvents(eventsData);
+      setNews(Array.isArray(newsData) ? newsData : []);
+      setPhotos(Array.isArray(photosData) ? photosData : []);
+      setVideos(Array.isArray(videosData) ? videosData : []);
     } catch (err) {
       console.error("AdminPanel: Fetch data error:", err);
       alert("Failed to refresh data. Please check console for details.");
@@ -1348,6 +1606,163 @@ const AdminPanel = () => {
     }
   };
 
+  const handleCreateNews = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const token = localStorage.getItem('akkfg_token');
+    try {
+      const response = await fetch('/api/admin/news', {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(newNews)
+      });
+      if (response.ok) {
+        alert('News article created successfully!');
+        setNewNews({ title: '', summary: '', date: new Date().toISOString().split('T')[0], image: '' });
+        setShowNewsForm(false);
+        fetchData();
+      } else {
+        alert('Failed to create news article');
+      }
+    } catch (err) {
+      console.error('Create news error:', err);
+      alert('Error creating news article');
+    }
+  };
+
+  const handleDeleteNews = async (id: string) => {
+    if (!window.confirm('Delete this news article?')) return;
+    const token = localStorage.getItem('akkfg_token');
+    try {
+      const response = await fetch(`/api/admin/news/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        alert('News deleted successfully!');
+        fetchData();
+      } else {
+        alert('Failed to delete news');
+      }
+    } catch (err) {
+      console.error('Delete news error:', err);
+      alert('Error deleting news');
+    }
+  };
+
+  const handleAddPhoto = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPhoto.file) {
+      alert('Please choose a photo file.');
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('akkfg_token');
+      const formData = new FormData();
+      formData.append('title', newPhoto.title);
+      formData.append('category', newPhoto.category);
+      formData.append('file', newPhoto.file);
+
+      const response = await fetch('/api/admin/photos', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to upload photo');
+      }
+
+      setNewPhoto({ title: '', file: null, category: 'Tournament' });
+      setShowPhotoForm(false);
+      fetchData();
+    } catch (err: any) {
+      console.error('Add photo error:', err);
+      alert(err.message || 'Failed to upload photo');
+    }
+  };
+
+  const handleDeletePhoto = async (id: string) => {
+    if (!window.confirm('Delete this photo?')) return;
+
+    try {
+      const token = localStorage.getItem('akkfg_token');
+      const response = await fetch(`/api/admin/photos/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(result.error || 'Failed to delete photo');
+      }
+
+      fetchData();
+    } catch (err: any) {
+      console.error('Delete photo error:', err);
+      alert(err.message || 'Failed to delete photo');
+    }
+  };
+
+  const handleAddVideo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newVideo.file) {
+      alert('Please choose a video file.');
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('akkfg_token');
+      const formData = new FormData();
+      formData.append('title', newVideo.title);
+      formData.append('file', newVideo.file);
+
+      const response = await fetch('/api/admin/videos', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to upload video');
+      }
+
+      setNewVideo({ title: '', file: null });
+      setShowVideoForm(false);
+      fetchData();
+    } catch (err: any) {
+      console.error('Add video error:', err);
+      alert(err.message || 'Failed to upload video');
+    }
+  };
+
+  const handleDeleteVideo = async (id: string) => {
+    if (!window.confirm('Delete this video?')) return;
+
+    try {
+      const token = localStorage.getItem('akkfg_token');
+      const response = await fetch(`/api/admin/videos/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(result.error || 'Failed to delete video');
+      }
+
+      fetchData();
+    } catch (err: any) {
+      console.error('Delete video error:', err);
+      alert(err.message || 'Failed to delete video');
+    }
+  };
+
   if (loading) return <div className="p-20 text-center">Loading Admin Panel...</div>;
 
   return (
@@ -1355,15 +1770,22 @@ const AdminPanel = () => {
       <div className="flex justify-between items-end mb-12">
         <div>
           <h2 className="text-4xl text-akkfg-blue mb-2">Admin Panel</h2>
-          <p className="text-slate-500">Manage federation registrations and view system statistics.</p>
+          <p className="text-slate-500">Manage federation registrations, events, news, photos and videos.</p>
         </div>
         <div className="flex gap-4">
-          <button 
-            onClick={() => setShowTournamentForm(true)}
-            className="bg-akkfg-orange text-white px-6 py-3 rounded-2xl font-bold hover:bg-akkfg-orange/90 transition-all flex items-center gap-2"
-          >
-            <Plus size={18} /> Create Tournament
-          </button>
+          {(adminTab === 'tournaments' || adminTab === 'news' || adminTab === 'photos' || adminTab === 'videos') && (
+            <button 
+              onClick={() => {
+                if (adminTab === 'tournaments') setShowTournamentForm(true);
+                else if (adminTab === 'news') setShowNewsForm(true);
+                else if (adminTab === 'photos') setShowPhotoForm(true);
+                else if (adminTab === 'videos') setShowVideoForm(true);
+              }}
+              className="bg-akkfg-orange text-white px-6 py-3 rounded-2xl font-bold hover:bg-akkfg-orange/90 transition-all flex items-center gap-2"
+            >
+              <Plus size={18} /> {adminTab === 'tournaments' ? 'Create Tournament' : adminTab === 'news' ? 'Create News' : adminTab === 'photos' ? 'Add Photo' : 'Add Video'}
+            </button>
+          )}
           <div className="bg-white px-6 py-3 rounded-2xl border border-slate-200 text-center">
             <p className="text-[10px] uppercase font-bold text-slate-400">Total Users</p>
             <p className="text-xl font-bold text-akkfg-blue">{stats?.users}</p>
@@ -1378,6 +1800,156 @@ const AdminPanel = () => {
           </div>
         </div>
       </div>
+
+      {/* Admin Tabs */}
+      <div className="flex gap-2 mb-8 border-b border-slate-200 overflow-x-auto">
+        {[
+          { id: 'registrations', label: 'Registrations', icon: Users },
+          { id: 'tournaments', label: 'Tournaments', icon: Trophy },
+          { id: 'news', label: 'News', icon: Newspaper },
+          { id: 'photos', label: 'Photos', icon: ImageIcon },
+          { id: 'videos', label: 'Videos', icon: Play }
+        ].map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setAdminTab(tab.id)}
+            className={`px-4 py-3 font-bold text-sm flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
+              adminTab === tab.id 
+                ? 'border-akkfg-orange text-akkfg-orange' 
+                : 'border-transparent text-slate-500 hover:text-akkfg-blue'
+            }`}
+          >
+            <tab.icon size={18} />
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* News Form Modal */}
+      {showNewsForm && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl"
+          >
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-bold text-akkfg-blue">Create News</h3>
+              <button onClick={() => setShowNewsForm(false)} className="text-slate-400 hover:text-slate-600">
+                <X size={24} />
+              </button>
+            </div>
+            <form onSubmit={handleCreateNews} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-500 uppercase">News Title</label>
+                <input required type="text" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-akkfg-orange" value={newNews.title} onChange={e => setNewNews({...newNews, title: e.target.value})} placeholder="News headline" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-500 uppercase">Summary</label>
+                <textarea className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-akkfg-orange" value={newNews.summary} onChange={e => setNewNews({...newNews, summary: e.target.value})} placeholder="Brief summary" rows={3} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Date</label>
+                  <input required type="date" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-akkfg-orange" value={newNews.date} onChange={e => setNewNews({...newNews, date: e.target.value})} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Image URL</label>
+                  <input type="url" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-akkfg-orange" value={newNews.image} onChange={e => setNewNews({...newNews, image: e.target.value})} placeholder="https://..." />
+                </div>
+              </div>
+              <button type="submit" className="w-full bg-akkfg-blue text-white py-4 rounded-xl font-bold shadow-lg hover:bg-akkfg-blue/90 transition-all mt-4">
+                Create News
+              </button>
+            </form>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Photo Form Modal */}
+      {showPhotoForm && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl"
+          >
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-bold text-akkfg-blue">Add Photo</h3>
+              <button onClick={() => setShowPhotoForm(false)} className="text-slate-400 hover:text-slate-600">
+                <X size={24} />
+              </button>
+            </div>
+            <form onSubmit={handleAddPhoto} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-500 uppercase">Photo Title</label>
+                <input required type="text" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-akkfg-orange" value={newPhoto.title} onChange={e => setNewPhoto({...newPhoto, title: e.target.value})} placeholder="Photo title" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-500 uppercase">Upload Photo</label>
+                <input
+                  required
+                  type="file"
+                  accept="image/*"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-akkfg-orange file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-akkfg-orange/10 file:text-akkfg-orange hover:file:bg-akkfg-orange/20"
+                  onChange={e => setNewPhoto({ ...newPhoto, file: e.target.files?.[0] || null })}
+                />
+                {newPhoto.file && <p className="text-xs text-emerald-600 font-semibold mt-1">{newPhoto.file.name}</p>}
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-500 uppercase">Category</label>
+                <select className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-akkfg-orange" value={newPhoto.category} onChange={e => setNewPhoto({...newPhoto, category: e.target.value})}>
+                  <option>Tournament</option>
+                  <option>Training</option>
+                  <option>Championship</option>
+                  <option>District Meet</option>
+                </select>
+              </div>
+              <button type="submit" className="w-full bg-akkfg-blue text-white py-4 rounded-xl font-bold shadow-lg hover:bg-akkfg-blue/90 transition-all mt-4">
+                Add Photo
+              </button>
+            </form>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Video Form Modal */}
+      {showVideoForm && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl"
+          >
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-bold text-akkfg-blue">Add Video</h3>
+              <button onClick={() => setShowVideoForm(false)} className="text-slate-400 hover:text-slate-600">
+                <X size={24} />
+              </button>
+            </div>
+            <form onSubmit={handleAddVideo} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-500 uppercase">Video Title</label>
+                <input required type="text" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-akkfg-orange" value={newVideo.title} onChange={e => setNewVideo({...newVideo, title: e.target.value})} placeholder="Video title" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-500 uppercase">Upload Video</label>
+                <input
+                  required
+                  type="file"
+                  accept="video/*"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-akkfg-orange file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-akkfg-orange/10 file:text-akkfg-orange hover:file:bg-akkfg-orange/20"
+                  onChange={e => setNewVideo({ ...newVideo, file: e.target.files?.[0] || null })}
+                />
+                {newVideo.file && <p className="text-xs text-emerald-600 font-semibold mt-1">{newVideo.file.name}</p>}
+              </div>
+              <button type="submit" className="w-full bg-akkfg-blue text-white py-4 rounded-xl font-bold shadow-lg hover:bg-akkfg-blue/90 transition-all mt-4">
+                Add Video
+              </button>
+            </form>
+          </motion.div>
+        </div>
+      )}
 
       {showTournamentForm && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -1524,15 +2096,21 @@ const AdminPanel = () => {
                     <div className="space-y-3">
                       <div className="bg-slate-50 p-3 rounded-xl">
                         <p className="text-[10px] text-slate-400 uppercase font-bold">Coaching Certificate</p>
-                        <p className="font-bold text-akkfg-blue">{selectedPlayer.coaching_cert || 'N/A'}</p>
+                        <div className="mt-2">
+                          <AdminDocumentActions url={selectedPlayer.coaching_cert} label="Coaching Certificate" />
+                        </div>
                       </div>
                       <div className="bg-slate-50 p-3 rounded-xl">
                         <p className="text-[10px] text-slate-400 uppercase font-bold">Educational Qualification</p>
-                        <p className="font-bold text-akkfg-blue">{selectedPlayer.edu_qualification || 'N/A'}</p>
+                        <div className="mt-2">
+                          <AdminDocumentActions url={selectedPlayer.edu_qualification} label="Educational Qualification" />
+                        </div>
                       </div>
                       <div className="bg-slate-50 p-3 rounded-xl">
                         <p className="text-[10px] text-slate-400 uppercase font-bold">Referee Certificate</p>
-                        <p className="font-bold text-akkfg-blue">{selectedPlayer.referee_cert || 'N/A'}</p>
+                        <div className="mt-2">
+                          <AdminDocumentActions url={selectedPlayer.referee_cert} label="Referee Certificate" />
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1553,18 +2131,7 @@ const AdminPanel = () => {
                         <FileText size={20} className="text-akkfg-orange" />
                       </div>
                       <p className="text-xs font-bold text-akkfg-blue">{doc.label}</p>
-                      {selectedPlayer[doc.key] ? (
-                        <a 
-                          href={selectedPlayer[doc.key]} 
-                          target="_blank" 
-                          rel="noreferrer"
-                          className="text-[10px] bg-akkfg-blue text-white px-3 py-1 rounded-full hover:bg-akkfg-blue/90 transition-all"
-                        >
-                          View Document
-                        </a>
-                      ) : (
-                        <span className="text-[10px] text-slate-400 italic">Not Uploaded</span>
-                      )}
+                      <AdminDocumentActions url={selectedPlayer[doc.key]} label={doc.label} />
                     </div>
                   ))}
                 </div>
@@ -1608,6 +2175,8 @@ const AdminPanel = () => {
       )}
 
       <div className="space-y-12">
+        {adminTab === 'registrations' && (
+          <>
         <section>
           <div className="flex items-center gap-4 mb-6">
             <h3 className="text-2xl font-bold text-akkfg-blue">Federation Registrations</h3>
@@ -1681,7 +2250,11 @@ const AdminPanel = () => {
             </div>
           </div>
         </section>
+          </>
+        )}
 
+        {adminTab === 'tournaments' && (
+          <>
         <section className="mt-16">
           <div className="flex items-center gap-4 mb-6">
             <h3 className="text-2xl font-bold text-akkfg-blue">Manage Tournaments</h3>
@@ -1726,6 +2299,119 @@ const AdminPanel = () => {
             )}
           </div>
         </section>
+          </>
+        )}
+
+        {adminTab === 'news' && (
+          <>
+        <section>
+          <div className="flex items-center gap-4 mb-6">
+            <h3 className="text-2xl font-bold text-akkfg-blue">News Management</h3>
+            <span className="bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-xs font-bold">{news.length}</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {news.map((article: any) => (
+              <div key={article.id} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition-all group">
+                {article.image && <img src={article.image} alt={article.title} className="w-full h-40 object-cover rounded-2xl mb-4" />}
+                <h4 className="text-lg font-bold text-akkfg-blue mb-2 group-hover:text-akkfg-orange transition-colors">{article.title}</h4>
+                <p className="text-sm text-slate-500 mb-4 line-clamp-2">{article.summary}</p>
+                <div className="flex items-center justify-between text-xs text-slate-400">
+                  <span>{new Date(article.date).toLocaleDateString()}</span>
+                  <button 
+                    onClick={() => handleDeleteNews(article.id)}
+                    className="text-red-600 hover:text-red-700 font-bold"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+            ))}
+            {news.length === 0 && (
+              <div className="col-span-full py-12 text-center bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200 text-slate-400">
+                No news articles yet.
+              </div>
+            )}
+          </div>
+        </section>
+          </>
+        )}
+
+        {adminTab === 'photos' && (
+          <>
+        <section>
+          <div className="flex items-center gap-4 mb-6">
+            <h3 className="text-2xl font-bold text-akkfg-blue">Photo Gallery</h3>
+            <span className="bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-xs font-bold">{photos.length}</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {photos.map((photo: any) => (
+              <div key={photo.id} className="relative group rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all h-48 bg-slate-100">
+                <img src={photo.image} alt={photo.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-3">
+                  <div className="flex-1">
+                    <p className="text-white font-bold text-sm">{photo.title}</p>
+                    <p className="text-white/70 text-xs">{photo.category}</p>
+                  </div>
+                  <button 
+                    onClick={() => handleDeletePhoto(photo.id)}
+                    className="bg-red-600 text-white p-2 rounded-lg hover:bg-red-700 transition-all"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+            ))}
+            {photos.length === 0 && (
+              <div className="col-span-full py-12 text-center bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200 text-slate-400">
+                No photos yet.
+              </div>
+            )}
+          </div>
+        </section>
+          </>
+        )}
+
+        {adminTab === 'videos' && (
+          <>
+        <section>
+          <div className="flex items-center gap-4 mb-6">
+            <h3 className="text-2xl font-bold text-akkfg-blue">Video Management</h3>
+            <span className="bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-xs font-bold">{videos.length}</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {videos.map((video: any) => (
+              <div key={video.id} className="relative group rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all h-64 bg-slate-100">
+                <video
+                  src={video.url}
+                  className="w-full h-full object-cover"
+                  controls
+                  preload="metadata"
+                />
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 p-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-white font-bold">{video.title}</p>
+                    <a href={video.url} target="_blank" rel="noreferrer" className="text-akkfg-orange text-xs font-bold hover:underline">
+                      Open Video
+                    </a>
+                  </div>
+                  <button 
+                    onClick={() => handleDeleteVideo(video.id)}
+                    className="bg-red-600 text-white p-2 rounded-lg hover:bg-red-700 transition-all"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+            ))}
+            {videos.length === 0 && (
+              <div className="col-span-full py-12 text-center bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200 text-slate-400">
+                No videos yet.
+              </div>
+            )}
+          </div>
+        </section>
+          </>
+        )}
       </div>
     </div>
   );
@@ -1792,6 +2478,7 @@ export default function App() {
             {activeTab === 'about' && <About />}
             {activeTab === 'events' && <Events />}
             {activeTab === 'register' && <Registration setActiveTab={setActiveTab} />}
+            {activeTab === 'media' && <MediaNews />}
             {activeTab === 'downloads' && <Downloads />}
             {activeTab === 'contact' && <Contact />}
             {activeTab === 'dashboard' && user && (
