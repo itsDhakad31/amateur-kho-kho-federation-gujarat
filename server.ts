@@ -190,8 +190,59 @@ const generateUniqueID = async (role: string) => {
   return `${prefix}-${count.toString().padStart(4, '0')}`;
 };
 
+const getYearFromDateValue = (value: string | null | undefined) => {
+  if (!value) return null;
+
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const parsed = new Date(trimmed);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.getFullYear();
+  }
+
+  const leadingYear = Number(trimmed.slice(0, 4));
+  return Number.isNaN(leadingYear) ? null : leadingYear;
+};
+
 // API Routes - ALL /api/*
 app.get('/api/ping', (req, res) => res.json({ message: 'pong' }));
+
+app.get('/api/site-stats', async (req, res) => {
+  const currentYear = new Date().getFullYear();
+  const [playersRes, coachesRes, districtsRes, eventsRes] = await Promise.all([
+    supabase.from('registrations').select('id', { count: 'exact', head: true }).eq('role', 'Student'),
+    supabase.from('registrations').select('id', { count: 'exact', head: true }).eq('role', 'Coach'),
+    supabase.from('registrations').select('address_city'),
+    supabase.from('events').select('date')
+  ]);
+
+  if (playersRes.error || coachesRes.error || districtsRes.error || eventsRes.error) {
+    return res.status(500).json({
+      error:
+        playersRes.error?.message ||
+        coachesRes.error?.message ||
+        districtsRes.error?.message ||
+        eventsRes.error?.message ||
+        'Failed to load site stats'
+    });
+  }
+
+  const districtsCovered = new Set(
+    (districtsRes.data || [])
+      .map((row) => row.address_city?.trim().toLowerCase())
+      .filter(Boolean)
+  ).size;
+
+  const annualEvents = (eventsRes.data || []).filter((event) => getYearFromDateValue(event.date) === currentYear).length;
+
+  res.json({
+    registeredPlayers: playersRes.count ?? 0,
+    activeCoaches: coachesRes.count ?? 0,
+    districtsCovered,
+    annualEvents
+  });
+});
 
 app.get('/api/news', async (req, res) => {
   const { data, error } = await supabase.from('news').select('*').order('date', { ascending: false });
@@ -606,13 +657,13 @@ app.delete('/api/admin/news/:id', authMiddleware, isAdminMiddleware, async (req,
 
 app.get('/api/admin/stats', authMiddleware, isAdminMiddleware, async (req, res) => {
   const [usersRes, regsRes, pendingRes] = await Promise.all([
-    supabase.from('users').select('count', { count: 'exact', head: true }),
-    supabase.from('registrations').select('count', { count: 'exact', head: true }),
-    supabase.from('registrations').select('count', { count: 'exact', head: true }).eq('status', 'Pending')
+    supabase.from('users').select('id', { count: 'exact', head: true }),
+    supabase.from('registrations').select('id', { count: 'exact', head: true }),
+    supabase.from('registrations').select('id', { count: 'exact', head: true }).eq('status', 'Pending')
   ]);
-  const users = usersRes.data?.[0]?.count || 0;
-  const registrations = regsRes.data?.[0]?.count || 0;
-  const pending = pendingRes.data?.[0]?.count || 0;
+  const users = usersRes.count ?? 0;
+  const registrations = regsRes.count ?? 0;
+  const pending = pendingRes.count ?? 0;
   res.json({ users, registrations, pending });
 });
 

@@ -27,6 +27,13 @@ export interface EventItem {
   status: 'Upcoming' | 'Ongoing' | 'Completed';
 }
 
+export interface SiteStats {
+  registeredPlayers: number;
+  activeCoaches: number;
+  districtsCovered: number;
+  annualEvents: number;
+}
+
 export interface RegistrationData {
   unique_id?: string;
   name: string;

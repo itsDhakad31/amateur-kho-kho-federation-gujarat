@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
+import {
   Trophy, 
   Users, 
   Calendar, 
@@ -25,7 +25,7 @@ import {
   Play,
   Image as ImageIcon
 } from 'lucide-react';
-import { NewsItem, EventItem, RegistrationData, User, RegistrationFormData } from './types';
+import { NewsItem, EventItem, RegistrationData, SiteStats, User, RegistrationFormData } from './types';
 
 // --- Components ---
 
@@ -420,11 +420,37 @@ const Footer = () => (
 const Home = ({ setActiveTab }: { setActiveTab: (tab: string) => void }) => {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [events, setEvents] = useState<EventItem[]>([]);
+  const [siteStats, setSiteStats] = useState<SiteStats>({
+    registeredPlayers: 0,
+    activeCoaches: 0,
+    districtsCovered: 0,
+    annualEvents: 0
+  });
 
   useEffect(() => {
-    fetch('/api/news').then(res => res.json()).then(setNews);
-    fetch('/api/events').then(res => res.json()).then(setEvents);
+    const fetchJson = async <T,>(url: string): Promise<T> => {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Failed to fetch ${url}`);
+      return res.json();
+    };
+
+    Promise.allSettled([
+      fetchJson<NewsItem[]>('/api/news'),
+      fetchJson<EventItem[]>('/api/events'),
+      fetchJson<SiteStats>('/api/site-stats')
+    ]).then(([newsResult, eventsResult, statsResult]) => {
+      if (newsResult.status === 'fulfilled') setNews(newsResult.value);
+      if (eventsResult.status === 'fulfilled') setEvents(eventsResult.value);
+      if (statsResult.status === 'fulfilled') setSiteStats(statsResult.value);
+    });
   }, []);
+
+  const statsCards = [
+    { label: 'Registered Players', value: siteStats.registeredPlayers.toLocaleString('en-IN'), icon: Users },
+    { label: 'Active Coaches', value: siteStats.activeCoaches.toLocaleString('en-IN'), icon: ShieldCheck },
+    { label: 'Districts Covered', value: siteStats.districtsCovered.toLocaleString('en-IN'), icon: MapPin },
+    { label: 'Annual Events', value: siteStats.annualEvents.toLocaleString('en-IN'), icon: Calendar },
+  ];
 
   return (
     <div className="space-y-20 pb-20">
@@ -479,12 +505,7 @@ Reviving the Spirit of <span className="text-akkfg-orange">Kho-Kho</span> in Guj
       {/* Stats Section */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-32 relative z-20">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            { label: 'Registered Players', value: '12,450+', icon: Users },
-            { label: 'Active Coaches', value: '450+', icon: ShieldCheck },
-            { label: 'Districts Covered', value: '33', icon: MapPin },
-            { label: 'Annual Events', value: '80+', icon: Calendar },
-          ].map((stat, i) => (
+          {statsCards.map((stat, i) => (
             <motion.div 
               key={i}
               initial={{ opacity: 0, y: 20 }}
